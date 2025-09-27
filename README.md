@@ -12,7 +12,7 @@ It allows you to register/login, add transactions, view charts, and export data 
 📅 Automatic timestamping in IST (Asia/Kolkata)
 📊 Visualize spending with charts and tables
 📤 Export transactions (CSV/Excel)
-🛠️ Deployed using Render / (or your hosting choice)
+🛠️ Deployed using Render
 🐙 Version controlled with GitHub
 
 🏗️ Tech Stack
