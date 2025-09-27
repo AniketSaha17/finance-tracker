@@ -283,5 +283,8 @@ def export_csv_protected(authorization: Optional[str] = Header(None), db: Sessio
 
 
 from fastapi.staticfiles import StaticFiles
+import os
 
-app.mount("/", StaticFiles(directory="C:/Users/HP/Desktop/finance-tracker/frontend", html=True), name="frontend")
+# Serve frontend from the folder at the same level as main.py
+frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
+app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
