@@ -1,29 +1,33 @@
-// register.js
-document.getElementById('registerBtn').addEventListener('click', async () => {
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
-  const msg = document.getElementById('msg');
-  msg.textContent = '';
+// frontend/register.js
+const API_BASE = (
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  window.location.port !== '8000'
+) ? 'http://127.0.0.1:8000' : window.location.origin;
 
-  if (!username || !password) { msg.textContent = 'Enter username & password'; msg.style.color='red'; return; }
+const regForm = document.getElementById('registerForm');
+if (regForm) {
+  regForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
 
-  try {
-    const res = await fetch('http://127.0.0.1:8000/register', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      msg.textContent = data.detail || 'Registration failed';
-      msg.style.color = 'red';
-      return;
+    try {
+      const res = await fetch(`${API_BASE}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Registration failed');
+      }
+
+      alert('Registration successful — please login.');
+      window.location.href = '/login.html';
+    } catch (err) {
+      alert('Register error: ' + err.message);
+      console.error('Register error', err);
     }
-    msg.textContent = 'Registered. Redirecting to login...';
-    msg.style.color = 'green';
-    setTimeout(()=> location.href = 'login.html', 1200);
-  } catch (err) {
-    msg.textContent = 'Network error: ' + err.message;
-    msg.style.color = 'red';
-  }
-});
+  });
+}

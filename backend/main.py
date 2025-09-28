@@ -83,12 +83,14 @@ Base.metadata.create_all(bind=engine)
 # ---------- App ----------
 app = FastAPI(title="Finance Tracker (Auth)")
 
+# ---------- CORS ----------
+# Allow all origins for demo; in production, restrict this to your frontend URL
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # change in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+  CORSMiddleware,
+  allow_origins=["*"],   # ok for demo; in production restrict to your frontend URL
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"],
 )
 
 # ---------- Security utils ----------

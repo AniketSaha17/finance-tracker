@@ -1,143 +1,265 @@
-// script.js (frontend)
-const token = localStorage.getItem('token');
-if (!token) window.location.href = 'login.html';
+// frontend/script.js
+// (Requires Chart.js already loaded from your index.html)
 
-// elements
+const API_BASE = (
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  window.location.port !== '8000'
+) ? 'http://127.0.0.1:8000' : window.location.origin;
+
+function authHeaders() {
+  const token = localStorage.getItem('ft_token');
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+  };
+}
+
+// If this page requires login, redirect if not logged in
+const token = localStorage.getItem('ft_token');
+// If you want the landing page to be public, remove this guard
+if (!token && window.location.pathname !== '/login.html' && window.location.pathname !== '/register.html') {
+  // user not logged in -> go to login page
+  window.location.href = '/login.html';
+}
+
+// DOM Elements
 const form = document.getElementById('txForm');
 const result = document.getElementById('result');
 const txTableBody = document.querySelector('#txTable tbody');
 const totalIncomeEl = document.getElementById('totalIncome');
 const totalExpenseEl = document.getElementById('totalExpense');
-const chartCanvas = document.getElementById('incomeExpenseChart').getContext('2d');
-const monthlyCanvas = document.getElementById('monthlyChart').getContext('2d');
+const chartCanvas = document.getElementById('incomeExpenseChart')?.getContext?.('2d');
+const monthlyCanvas = document.getElementById('monthlyChart')?.getContext?.('2d');
 const filter = document.getElementById('filter');
 const yearSelect = document.getElementById('yearSelect');
-const logoutBtn = document.getElementById('logoutBtn');
-const exportBtn = document.getElementById('exportBtn');
 
-function parseDateSafe(s){ try{ return new Date(s); }catch{ return new Date(); } }
-document.getElementById('incomeExpenseChart').style.width = '360px';
-document.getElementById('incomeExpenseChart').style.height = '260px';
-document.getElementById('monthlyChart').style.width = '520px';
-document.getElementById('monthlyChart').style.height = '260px';
+let myPie = null;
+let monthlyBarChart = null;
 
-async function fetchTransactions(){
-  try{
-    const res = await fetch('http://127.0.0.1:8000/transactions', { headers: { 'Authorization': 'Bearer ' + token } });
-    if (res.status === 401) { alert('Session expired. Please login again.'); logout(); return; }
-    if (!res.ok) throw new Error('Fetch failed: ' + res.status);
-    const allTransactions = await res.json();
-    populateYears(allTransactions);
-    const transactions = applyFilter(allTransactions);
+// Utility to download CSV (used by Export)
+async function exportCsv() {
+  try {
+    const res = await fetch(`${API_BASE}/export-csv`, { headers: authHeaders() });
+    if (!res.ok) throw new Error('Export failed: ' + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'transactions.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    alert('Export error: ' + err.message);
+    console.error(err);
+  }
+}
+
+// Fetch transactions (protected)
+async function fetchTransactions() {
+  try {
+    const res = await fetch(`${API_BASE}/transactions`, { headers: authHeaders() });
+    if (!res.ok) {
+      if (res.status === 401) {
+        // token expired/invalid
+        alert('Session expired — please login again.');
+        localStorage.removeItem('ft_token');
+        window.location.href = '/login.html';
+        return;
+      }
+      throw new Error('Failed to fetch transactions: ' + res.status);
+    }
+    let transactions = await res.json();
+
+    // populate year drop-down from ALL transactions (server returns user's transactions)
+    populateYears(transactions);
+
+    // apply filter
+    transactions = applyFilter(transactions);
+
+    // clear table
     txTableBody.innerHTML = '';
-    let totalIncome = 0, totalExpense = 0;
-    const incomePerMonth = Array(12).fill(0), expensePerMonth = Array(12).fill(0);
-    transactions.forEach(tx => {
-      const txDate = parseDateSafe(tx.date);
-      const formatted = txDate.toLocaleString();
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+    const incomePerMonth = Array(12).fill(0);
+    const expensePerMonth = Array(12).fill(0);
+
+    transactions.forEach((tx, idx) => {
+      // ensure date exists and parse
+      const txDate = tx.date ? new Date(tx.date) : new Date();
+      const formattedDate = txDate.toLocaleString();
+
+      // displayId per-user (index + 1)
+      const displayId = idx + 1;
+
       const row = document.createElement('tr');
       row.innerHTML = `
-        <td>${tx.id}</td>
+        <td>${displayId}</td>
         <td>${tx.title}</td>
         <td>${Number(tx.amount).toFixed(2)}</td>
         <td>${tx.type}</td>
         <td>${tx.category || ''}</td>
-        <td>${formatted}</td>
+        <td>${formattedDate}</td>
         <td><button class="deleteBtn" data-id="${tx.id}">Delete</button></td>
       `;
       txTableBody.appendChild(row);
+
+      // delete handler
       row.querySelector('.deleteBtn').addEventListener('click', async () => {
         if (!confirm('Delete this transaction?')) return;
-        await fetch(`http://127.0.0.1:8000/delete-transaction/${tx.id}`, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
-        await fetchTransactions();
+        try {
+          const del = await fetch(`${API_BASE}/delete-transaction/${tx.id}`, {
+            method: 'DELETE',
+            headers: authHeaders()
+          });
+          if (!del.ok) throw new Error('Delete failed');
+          await fetchTransactions();
+        } catch (err) {
+          alert('Delete error: ' + err.message);
+        }
       });
+
+      // totals
       if (tx.type === 'income') totalIncome += Number(tx.amount);
       else if (tx.type === 'expense') totalExpense += Number(tx.amount);
-      const m = txDate.getMonth();
-      if (tx.type === 'income') incomePerMonth[m] += Number(tx.amount);
-      else if (tx.type === 'expense') expensePerMonth[m] += Number(tx.amount);
+
+      // monthly buckets
+      const month = txDate.getMonth();
+      if (tx.type === 'income') incomePerMonth[month] += Number(tx.amount);
+      else if (tx.type === 'expense') expensePerMonth[month] += Number(tx.amount);
     });
+
     totalIncomeEl.textContent = totalIncome.toFixed(2);
     totalExpenseEl.textContent = totalExpense.toFixed(2);
-    renderPieChart(totalIncome, totalExpense);
-    renderMonthlyBar(incomePerMonth, expensePerMonth);
+
+    // Pie
+    if (myPie) myPie.destroy();
+    if (chartCanvas) {
+      myPie = new Chart(chartCanvas, {
+        type: 'pie',
+        data: {
+          labels: ['Income','Expense'],
+          datasets: [{ data: [totalIncome, totalExpense] }]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+      });
+    }
+
+    // Monthly bar
+    if (monthlyBarChart) monthlyBarChart.destroy();
+    if (monthlyCanvas) {
+      monthlyBarChart = new Chart(monthlyCanvas, {
+        type: 'bar',
+        data: {
+          labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+          datasets: [
+            { label: 'Income', data: incomePerMonth },
+            { label: 'Expense', data: expensePerMonth }
+          ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
   } catch (err) {
     console.error(err);
-    result.innerText = 'Error: ' + (err.message || err);
-    txTableBody.innerHTML = '<tr><td colspan="7">Could not load transactions</td></tr>';
-    totalIncomeEl.textContent = '0.00'; totalExpenseEl.textContent = '0.00';
-    renderPieChart(0,0); renderMonthlyBar(Array(12).fill(0), Array(12).fill(0));
+    result.innerText = 'Error fetching transactions: ' + err.message;
   }
 }
 
-function populateYears(transactions){
-  const years = new Set(transactions.map(t => parseDateSafe(t.date).getFullYear()));
-  years.add(new Date().getFullYear());
-  const arr = Array.from(years).sort((a,b) => b-a);
-  yearSelect.innerHTML = '<option value="all">All</option>';
-  arr.forEach(y => { const o = document.createElement('option'); o.value = String(y); o.textContent = String(y); yearSelect.appendChild(o); });
+// Populate year dropdown
+function populateYears(transactions) {
+  const years = Array.from(new Set(transactions.map(t => new Date(t.date).getFullYear()))).sort((a,b) => b-a);
+  yearSelect.innerHTML = '';
+  const allOpt = document.createElement('option');
+  allOpt.value = 'all';
+  allOpt.textContent = 'All';
+  yearSelect.appendChild(allOpt);
+  years.forEach(y => {
+    const opt = document.createElement('option');
+    opt.value = String(y);
+    opt.textContent = String(y);
+    yearSelect.appendChild(opt);
+  });
+  // default select: current year if present
+  const nowYear = new Date().getFullYear();
+  yearSelect.value = (years.includes(nowYear) ? String(nowYear) : 'all');
   yearSelect.style.display = (filter.value === 'year') ? 'inline-block' : 'none';
-  yearSelect.value = String(new Date().getFullYear());
 }
 
-function applyFilter(transactions){
-  const now = new Date(); let list = transactions.slice();
-  if (filter.value === 'week') list = list.filter(tx => (now - parseDateSafe(tx.date)) <= 7*24*60*60*1000);
-  else if (filter.value === 'month') list = list.filter(tx => { const d = parseDateSafe(tx.date); return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(); });
-  else if (filter.value === 'year') {
-    const sel = yearSelect.value; if (!sel || sel === 'all') return list;
-    const y = parseInt(sel,10); list = list.filter(tx => parseDateSafe(tx.date).getFullYear() === y);
+// Filter function (week, month, year)
+function applyFilter(transactions) {
+  const now = new Date();
+  if (filter.value === 'week') {
+    return transactions.filter(tx => (now - new Date(tx.date)) <= 7 * 24*60*60*1000);
+  } else if (filter.value === 'month') {
+    return transactions.filter(tx => {
+      const d = new Date(tx.date);
+      return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    });
+  } else if (filter.value === 'year') {
+    const sel = yearSelect.value;
+    if (!sel || sel === 'all') return transactions;
+    return transactions.filter(tx => new Date(tx.date).getFullYear() === Number(sel));
   }
-  return list;
+  return transactions;
 }
 
-function renderPieChart(inc, exp){
-  const a = inc || 0.0001, b = exp || 0.00009;
-  if (window.myChart) window.myChart.destroy();
-  window.myChart = new Chart(chartCanvas, { type:'pie', data:{ labels:['Income','Expense'], datasets:[{ data:[a,b], backgroundColor:['#4caf50','#f44336'] }] }, options:{ responsive:false, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }});
+// Form submit (add tx)
+if (form) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const payload = {
+      title: document.getElementById('title').value,
+      amount: parseFloat(document.getElementById('amount').value),
+      type: document.getElementById('type').value,
+      category: document.getElementById('category').value || null
+    };
+    try {
+      // POST to protected endpoint /tx/add (fall back to legacy /add-transaction if needed)
+      const endpoints = ['/tx/add','/add-transaction'];
+      let ok = false, data;
+      for (const ep of endpoints) {
+        const res = await fetch(API_BASE + ep, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify(payload)
+        });
+        if (res.ok) { data = await res.json(); ok = true; break; }
+        if (res.status === 404) continue;
+        const txt = await res.text();
+        throw new Error(txt || ('Request failed: ' + res.status));
+      }
+      if (!ok) throw new Error('No transaction endpoint found (404)');
+      // refresh
+      await fetchTransactions();
+      form.reset();
+    } catch (err) {
+      alert('Add transaction error: ' + err.message);
+    }
+  });
 }
 
-function renderMonthlyBar(incArr, expArr){
-  if (window.monthlyBarChart) window.monthlyBarChart.destroy();
-  window.monthlyBarChart = new Chart(monthlyCanvas, { type:'bar', data:{ labels:['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], datasets:[{ label:'Income', data:incArr, backgroundColor:'#4caf50' },{ label:'Expense', data:expArr, backgroundColor:'#f44336' }] }, options:{ responsive:false, maintainAspectRatio:false, scales:{ y:{ beginAtZero:true } }, plugins:{ legend:{ position:'bottom' } } }});
+// logout button (if exists)
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', () => {
+    localStorage.removeItem('ft_token');
+    window.location.href = '/login.html';
+  });
 }
 
-// event listeners
-filter.addEventListener('change', ()=>{ yearSelect.style.display = (filter.value === 'year') ? 'inline-block' : 'none'; fetchTransactions(); });
-yearSelect.addEventListener('change', fetchTransactions);
+// filters
+if (filter) filter.addEventListener('change', fetchTransactions);
+if (yearSelect) yearSelect.addEventListener('change', fetchTransactions);
 
-form.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const payload = {
-    title: document.getElementById('title').value,
-    amount: parseFloat(document.getElementById('amount').value),
-    type: document.getElementById('type').value,
-    category: document.getElementById('category').value || null
-  };
-  try {
-    const res = await fetch('http://127.0.0.1:8000/tx/add', { method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + token }, body: JSON.stringify(payload) });
-    if (res.status === 401) { alert('Session expired. Please login again.'); logout(); return; }
-    if (!res.ok) throw new Error('Add failed');
-    form.reset(); await fetchTransactions();
-  } catch (err) {
-    result.innerText = 'Error: ' + (err.message||err);
-  }
-});
-
-// logout
-function logout(){ localStorage.removeItem('token'); window.location.href = 'login.html'; }
-logoutBtn.addEventListener('click', logout);
-
-// export csv
-exportBtn.addEventListener('click', async () => {
-  try {
-    const res = await fetch('http://127.0.0.1:8000/export-csv', { headers:{ 'Authorization':'Bearer ' + token } });
-    if (res.status === 401) { alert('Session expired. Please login again.'); logout(); return; }
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'transactions.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-  } catch (err) { alert('Export failed: ' + err.message); }
-});
+// Export CSV (if you have a button with id exportBtn)
+const exportBtn = document.getElementById('exportBtn');
+if (exportBtn) exportBtn.addEventListener('click', exportCsv);
 
 // initial load
-fetchTransactions();
+if (window.location.pathname === '/' || window.location.pathname.endsWith('index.html')) {
+  fetchTransactions();
+}

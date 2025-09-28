@@ -1,28 +1,38 @@
-// login.js
-document.getElementById('loginBtn').addEventListener('click', async () => {
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
-  const msg = document.getElementById('msg');
-  msg.textContent = '';
+// frontend/login.js
+const API_BASE = (
+  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
+  window.location.port !== '8000'
+) ? 'http://127.0.0.1:8000' : window.location.origin;
 
-  if (!username || !password) { msg.textContent = 'Enter username & password'; msg.style.color='red'; return; }
+const form = document.getElementById('loginForm');
+if (form) {
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
 
-  try {
-    const res = await fetch('http://127.0.0.1:8000/login', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ username, password })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      msg.textContent = data.detail || 'Login failed';
-      msg.style.color = 'red';
-      return;
+    try {
+      const res = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || 'Login failed');
+      }
+
+      const data = await res.json();
+      const token = data.access_token || data.token;
+      if (!token) throw new Error('No token returned from server');
+
+      localStorage.setItem('ft_token', token);
+      // go to dashboard
+      window.location.href = '/index.html';
+    } catch (err) {
+      alert('Login error: ' + err.message);
+      console.error('Login error', err);
     }
-    localStorage.setItem('token', data.access_token);
-    window.location.href = 'index.html';
-  } catch (err) {
-    msg.textContent = 'Network error: ' + err.message;
-    msg.style.color = 'red';
-  }
-});
+  });
+}
