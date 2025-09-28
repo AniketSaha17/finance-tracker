@@ -285,6 +285,8 @@ def export_csv_protected(authorization: Optional[str] = Header(None), db: Sessio
 from fastapi.staticfiles import StaticFiles
 import os
 
-# Serve frontend from the folder at the same level as main.py
-frontend_path = os.path.join(os.path.dirname(__file__), "frontend")
+# Move up one level from backend/ and then into frontend/
+frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
+
 app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
