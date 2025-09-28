@@ -1,8 +1,9 @@
 // frontend/register.js
-const API_BASE = (
-  (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost') &&
-  window.location.port !== '8000'
-) ? 'http://127.0.0.1:8000' : window.location.origin;
+// Use local backend if running on localhost, otherwise use current origin
+const API_BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
+    ? 'http://127.0.0.1:8000'
+    : '';
+
 
 const regForm = document.getElementById('registerForm');
 if (regForm) {
