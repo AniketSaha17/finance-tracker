@@ -1,60 +1,41 @@
-# Virtual environment
+# Virtual envs
 .venv/
 venv/
 env/
 ENV/
 
-# Python cache
+# Python caches / bytecode
 __pycache__/
 *.py[cod]
 *$py.class
-
-# SQLite / local DB
-*.sqlite3
-db.sqlite3
-db.sqlite3-journal
-*.db
 
 # Environment files
 .env
 .envrc
 
-# Build / distribution
+# Local DB / sqlite files (ignore local DB)
+backend/database.db
+*.sqlite3
+db.sqlite3
+db.sqlite3-journal
+*.db
+
+# Editor and OS files
+.vscode/
+.idea/
+.DS_Store
+
+# Build / packaging
 build/
 dist/
-.eggs/
-*.egg-info
+*.egg-info/
 *.egg
-*.manifest
-*.spec
 
-# Logs / reports
-*.log
-*.pot
-*.mo
-*.pyc
+# Test / coverage
 .coverage
 htmlcov/
-.tox/
-.nox/
-pytest_cache/
+.pytest_cache/
 .mypy_cache/
-.dmypy.json
-.pyre/
-.pytype/
 
 # Jupyter
 .ipynb_checkpoints
-
-# IDE / Editor
-.vscode/
-.idea/
-.spyderproject
-.spyproject
-.ropeproject
-
-# Misc
-.DS_Store
-
-
-backend/database.db
