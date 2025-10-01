@@ -78,7 +78,8 @@ class TransactionDB(Base):
     owner_id = Column(Integer, ForeignKey("users.id"))
     owner = relationship("UserDB", back_populates="transactions")
 
-Base.metadata.create_all(bind=engine)
+    # ensure tables exist (create them if missing)
+    Base.metadata.create_all(bind=engine)
 
 # ---------- App ----------
 app = FastAPI(title="Finance Tracker (Auth)")
@@ -172,15 +173,21 @@ def get_current_user_from_token(token: str, db: Session):
 # ---------- Routes ----------
 @app.post("/register", status_code=201)
 def register(user: UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(UserDB).filter(UserDB.username == user.username).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    hashed = get_password_hash(user.password)
-    db_user = UserDB(username=user.username, hashed_password=hashed)
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return {"id": db_user.id, "username": db_user.username}
+    try:
+        existing = db.query(UserDB).filter(UserDB.username == user.username).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Username already exists")
+        hashed = get_password_hash(user.password)
+        db_user = UserDB(username=user.username, hashed_password=hashed)
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        return {"id": db_user.id, "username": db_user.username}
+    except Exception as e:
+        # Log exception to stdout so Render logs show full traceback
+        import traceback, sys
+        traceback.print_exc(file=sys.stdout)
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 @app.post("/login", response_model=TokenResponse)
 def login(payload: UserCreate, db: Session = Depends(get_db)):
@@ -287,8 +294,7 @@ def export_csv_protected(authorization: Optional[str] = Header(None), db: Sessio
 from fastapi.staticfiles import StaticFiles
 import os
 
-# Move up one level from backend/ and then into frontend/
-frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
-
+frontend_path = os.path.join(os.path.dirname(__file__), "../frontend")
 app.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
 
