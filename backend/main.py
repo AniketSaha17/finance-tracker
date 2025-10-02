@@ -17,6 +17,21 @@ from starlette.responses import Response
 from starlette.status import HTTP_401_UNAUTHORIZED
 
 
+# ---------- App ----------
+app = FastAPI(title="Finance Tracker (Auth)")
+
+# ---------- CORS ----------
+# Allow all origins for demo; in production, restrict this to your frontend URL
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # for testing, allow everything
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+
 # ---------- Config ----------
 BASE_DIR = os.path.dirname(__file__)
 DB_PATH = os.path.join(BASE_DIR, "database.db")
@@ -81,18 +96,6 @@ class TransactionDB(Base):
     # ensure tables exist (create them if missing)
     Base.metadata.create_all(bind=engine)
 
-# ---------- App ----------
-app = FastAPI(title="Finance Tracker (Auth)")
-
-# ---------- CORS ----------
-# Allow all origins for demo; in production, restrict this to your frontend URL
-app.add_middleware(
-  CORSMiddleware,
-  allow_origins=["*"],   # ok for demo; in production restrict to your frontend URL
-  allow_credentials=True,
-  allow_methods=["*"],
-  allow_headers=["*"],
-)
 
 # ---------- Security utils ----------
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
